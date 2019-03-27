@@ -31,8 +31,9 @@
     c) Added new input list items for [Outcome] and [Action] used in the above.
     d) Added new "Primary" Reasons, the selected item being Primary_Presenting_Reason in the query.
     e) Added school name and type to query (joined with Bases table).
-    f) Added Referral Reason to query.
-    g) Added new UDFs diagnosed_ASD and diagnosed ADHD to query.
+    f) Added new UDFs diagnosed_ASD and diagnosed ADHD to query.
+    j) Added Referral Reason to query (UDF).
+    h) Added number of Fixed Exclusions to query (join to Exclusions table).
 
 *************************************************************************************/
 
@@ -73,6 +74,26 @@ WITH Reasons as (
 		onelive.involvement_reasons IvR ON Iv.involvement_id = IvR.involvement_id
 	WHERE	Iv.involvement_form_id = 31
 	)
+
+, referral_reasons AS (
+	/* lookup description for referral_reason */  
+	SELECT
+		int_code
+		,code_des as referral_reason
+		,CASE
+			WHEN int_code = 'AW' THEN 0
+			WHEN int_code = 'CB' THEN 1
+			WHEN int_code = 'DI' THEN 2
+			WHEN int_code = 'EP' THEN 3
+			WHEN int_code = 'M' THEN 4
+			WHEN int_code = 'SI' THEN 5
+			WHEN int_code = 'SP' THEN 6
+			WHEN int_code = 'TS' THEN 7
+			WHEN int_code = 'O' THEN 8
+		END as referral_reason_numeric
+	FROM  onelive.lookups_full
+	WHERE table_id='5009'
+	) 
 
 , Caseworker as (
 	SELECT	ivc.*
@@ -256,6 +277,18 @@ WITH Reasons as (
 	WHERE inactive = 'F'
 	)
 
+, fixed_exclusions as (
+	SELECT	e.stud_id
+		, COUNT (e.stud_id) as num_exclusions
+	FROM
+		onelive.exclusions e
+	WHERE
+		e.category='FIXD' and
+		(e.start_date between :SDate and :EDate or e.end_date between :SDate and :EDate)
+	GROUP BY
+		e.stud_id
+	)
+
 
 
 SELECT 	 Iv.involvement_id
@@ -284,7 +317,11 @@ SELECT 	 Iv.involvement_id
 	,Iv.open_date
 	,Iv.close_date
 	,CASE WHEN Iv.close_date is not null AND iv.close_date &lt;= sysdate THEN 1 ELSE 0 END as Is_Closed
-	--Number of sessions
+	-- Number of sessions
+	,decode(fi.num_exclusions,NULL,0,fi.num_exclusions) as fixed_exclusions
+	-- Reasons 
+	,rr.referral_reason
+	,rr.referral_reason_numeric
 	,R.primary_presenting_problem
 	,R.anxiety_or_worries
 	,R.challenging_behaviour
@@ -378,6 +415,12 @@ FROM 	onelive.involvement Iv
 	onelive.student s on p.person_id = s.stud_id
 	INNER JOIN
 	onelive.bases b on s.base_id = b.base_id
+	LEFT OUTER JOIN
+	referral_reasons rr on UDF.referral_reason = rr.int_code
+	LEFT OUTER JOIN
+	fixed_exclusions fi on IvSub.person_id = fi.stud_id
+
+
 
 WHERE 	involvement_form_id IN (31)
   and	Iv.open_date &lt;= :EDate
@@ -471,6 +514,14 @@ WHERE 	involvement_form_id IN (31)
         </Field>
         <Field Name="IS_CLOSED">
           <DataField>IS_CLOSED</DataField>
+          <rd:TypeName>System.Decimal</rd:TypeName>
+        </Field>
+        <Field Name="REFERRAL_REASON">
+          <DataField>REFERRAL_REASON</DataField>
+          <rd:TypeName>System.String</rd:TypeName>
+        </Field>
+        <Field Name="REFERRAL_REASON_NUMERIC">
+          <DataField>REFERRAL_REASON_NUMERIC</DataField>
           <rd:TypeName>System.Decimal</rd:TypeName>
         </Field>
         <Field Name="PRIMARY_PRESENTING_PROBLEM">
@@ -703,6 +754,10 @@ WHERE 	involvement_form_id IN (31)
         </Field>
         <Field Name="DIAGNOSED_ADHD">
           <DataField>DIAGNOSED_ADHD</DataField>
+          <rd:TypeName>System.Decimal</rd:TypeName>
+        </Field>
+        <Field Name="FIXED_EXCLUSIONS">
+          <DataField>FIXED_EXCLUSIONS</DataField>
           <rd:TypeName>System.Decimal</rd:TypeName>
         </Field>
         <Field Name="NO_DAYS">
@@ -1035,6 +1090,15 @@ GROUP BY involvement_id</CommandText>
                 </TablixColumn>
                 <TablixColumn>
                   <Width>3.16146cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.5cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.5cm</Width>
+                </TablixColumn>
+                <TablixColumn>
+                  <Width>2.5cm</Width>
                 </TablixColumn>
                 <TablixColumn>
                   <Width>2.5cm</Width>
@@ -2033,6 +2097,114 @@ GROUP BY involvement_id</CommandText>
                             </Paragraph>
                           </Paragraphs>
                           <rd:DefaultName>Textbox29</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#7292cc</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <BackgroundColor>#4c68a2</BackgroundColor>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox153">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value />
+                                  <Style>
+                                    <FontFamily>Tahoma</FontFamily>
+                                    <FontSize>11pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox153</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#7292cc</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <BackgroundColor>#4c68a2</BackgroundColor>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox146">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value />
+                                  <Style>
+                                    <FontFamily>Tahoma</FontFamily>
+                                    <FontSize>11pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox146</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#7292cc</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <BackgroundColor>#4c68a2</BackgroundColor>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox155">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value />
+                                  <Style>
+                                    <FontFamily>Tahoma</FontFamily>
+                                    <FontSize>11pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox155</rd:DefaultName>
                           <Style>
                             <Border>
                               <Color>#7292cc</Color>
@@ -4221,7 +4393,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>DOB</Value>
+                                  <Value>DoB</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -4617,7 +4789,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>School Stage</Value>
+                                  <Value>School Type</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -4954,6 +5126,114 @@ GROUP BY involvement_id</CommandText>
                             </Paragraph>
                           </Paragraphs>
                           <rd:DefaultName>Textbox143</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#7292cc</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <BackgroundColor>#4c68a2</BackgroundColor>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox164">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Fixed Exclusions</Value>
+                                  <Style>
+                                    <FontFamily>Tahoma</FontFamily>
+                                    <FontSize>11pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox164</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#7292cc</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <BackgroundColor>#4c68a2</BackgroundColor>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox152">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Referral Reason</Value>
+                                  <Style>
+                                    <FontFamily>Tahoma</FontFamily>
+                                    <FontSize>11pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox152</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#7292cc</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <BackgroundColor>#4c68a2</BackgroundColor>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="Textbox161">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>Referral Reason Numeric</Value>
+                                  <Style>
+                                    <FontFamily>Tahoma</FontFamily>
+                                    <FontSize>11pt</FontSize>
+                                    <FontWeight>Bold</FontWeight>
+                                    <Color>White</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>Textbox161</rd:DefaultName>
                           <Style>
                             <Border>
                               <Color>#7292cc</Color>
@@ -5769,7 +6049,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>ASD CAMHS PATHWAY</Value>
+                                  <Value>ASD CAMHS Pathway</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -5805,7 +6085,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>ADHD CAMHS PATHWAY</Value>
+                                  <Value>ADHD CAMHS Pathway</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -5841,7 +6121,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>OTHER CAMHS PATHWAY</Value>
+                                  <Value>Other CAMHS Pathway</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -5877,7 +6157,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>SIGNPOSTED</Value>
+                                  <Value>Signposted</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -5913,7 +6193,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>BRIEF INTERVENTION</Value>
+                                  <Value>Brief Intervention</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -5949,7 +6229,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>RESTORATIVE PRACTICE</Value>
+                                  <Value>Restorative Practice</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -5985,7 +6265,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>FRIENDSHIP</Value>
+                                  <Value>Friendship</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6057,7 +6337,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>GRADED EXPOSURE</Value>
+                                  <Value>Graded Exposure</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6093,7 +6373,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>BEHAVIOURAL ACTIVATION</Value>
+                                  <Value>Behavioural Activation</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6129,7 +6409,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>FUNCTIONAL ASSESSMENT</Value>
+                                  <Value>Functional Assessment</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6165,7 +6445,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>PERSON CENTRED</Value>
+                                  <Value>Person Centred</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6201,7 +6481,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>FAMILY CENTRED</Value>
+                                  <Value>Family Centred</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6237,7 +6517,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>ATTACHMENT PARENT</Value>
+                                  <Value>Attachment Parent</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6273,7 +6553,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>CONSULTATION</Value>
+                                  <Value>Consultation</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6309,7 +6589,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>TEAM AROUND CHILD</Value>
+                                  <Value>Team Around Child</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6345,7 +6625,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>OTHER</Value>
+                                  <Value>Other</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6384,6 +6664,7 @@ GROUP BY involvement_id</CommandText>
                                   <Value>Outcome</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
+                                    <FontSize>11pt</FontSize>
                                     <FontWeight>Bold</FontWeight>
                                     <Color>White</Color>
                                   </Style>
@@ -6419,6 +6700,7 @@ GROUP BY involvement_id</CommandText>
                                   <Value>Outcome Numeric</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
+                                    <FontSize>11pt</FontSize>
                                     <FontWeight>Bold</FontWeight>
                                     <Color>White</Color>
                                   </Style>
@@ -6454,6 +6736,7 @@ GROUP BY involvement_id</CommandText>
                                   <Value>Action</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
+                                    <FontSize>11pt</FontSize>
                                     <FontWeight>Bold</FontWeight>
                                     <Color>White</Color>
                                   </Style>
@@ -6489,6 +6772,7 @@ GROUP BY involvement_id</CommandText>
                                   <Value>Action Numeric</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
+                                    <FontSize>11pt</FontSize>
                                     <FontWeight>Bold</FontWeight>
                                     <Color>White</Color>
                                   </Style>
@@ -6521,7 +6805,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>PRE INTERVENTION RCADS ANXIETY</Value>
+                                  <Value>Pre Intervention RCADS Anxiety</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6557,7 +6841,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>IS THIS PRE RCADS MOOD</Value>
+                                  <Value>IS THIS Pre RCADS Mood</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6593,7 +6877,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>PRE ORS</Value>
+                                  <Value>Pre ORS</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6629,7 +6913,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>PRE SDQ</Value>
+                                  <Value>Pre SDQ</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6665,7 +6949,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>PRE GBO</Value>
+                                  <Value>Pre GBO</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6701,7 +6985,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>POST ANXIETY</Value>
+                                  <Value>Post Anxiety</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6737,7 +7021,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>POST DEPRESSION</Value>
+                                  <Value>Post Depression</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6773,7 +7057,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>POST ORS</Value>
+                                  <Value>Post ORS</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6809,7 +7093,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>POST SDQ</Value>
+                                  <Value>Post SDQ</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6845,7 +7129,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>POST GBO</Value>
+                                  <Value>Post GBO</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6881,7 +7165,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>FEEDBACK IMPACT</Value>
+                                  <Value>Feedback Impact</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6917,7 +7201,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>FEEDBACK UNDERSTANDING</Value>
+                                  <Value>Feedback Understanding</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6953,7 +7237,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>FEEDBACK GOALS</Value>
+                                  <Value>Feedback Goals</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -6989,7 +7273,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>FEEDBACK FUTURE</Value>
+                                  <Value>Feedback Future</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -7025,7 +7309,7 @@ GROUP BY involvement_id</CommandText>
                             <Paragraph>
                               <TextRuns>
                                 <TextRun>
-                                  <Value>FEEDBACK OVERALL</Value>
+                                  <Value>Feedback Overall</Value>
                                   <Style>
                                     <FontFamily>Tahoma</FontFamily>
                                     <FontSize>11pt</FontSize>
@@ -7807,6 +8091,105 @@ GROUP BY involvement_id</CommandText>
                             </Paragraph>
                           </Paragraphs>
                           <rd:DefaultName>NO_SESSIONS</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#e5e5e5</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="NUM_EXCLUSIONS">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!FIXED_EXCLUSIONS.Value</Value>
+                                  <Style>
+                                    <FontFamily>Tahoma</FontFamily>
+                                    <Color>#4d4d4d</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>NUM_EXCLUSIONS</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#e5e5e5</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="REFERRAL_REASON">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!REFERRAL_REASON.Value</Value>
+                                  <Style>
+                                    <FontFamily>Tahoma</FontFamily>
+                                    <Color>#4d4d4d</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>REFERRAL_REASON</rd:DefaultName>
+                          <Style>
+                            <Border>
+                              <Color>#e5e5e5</Color>
+                              <Style>Solid</Style>
+                            </Border>
+                            <PaddingLeft>2pt</PaddingLeft>
+                            <PaddingRight>2pt</PaddingRight>
+                            <PaddingTop>2pt</PaddingTop>
+                            <PaddingBottom>2pt</PaddingBottom>
+                          </Style>
+                        </Textbox>
+                      </CellContents>
+                    </TablixCell>
+                    <TablixCell>
+                      <CellContents>
+                        <Textbox Name="REFERRAL_REASON_NUMERIC">
+                          <CanGrow>true</CanGrow>
+                          <KeepTogether>true</KeepTogether>
+                          <Paragraphs>
+                            <Paragraph>
+                              <TextRuns>
+                                <TextRun>
+                                  <Value>=Fields!REFERRAL_REASON_NUMERIC.Value</Value>
+                                  <Style>
+                                    <FontFamily>Tahoma</FontFamily>
+                                    <Color>#4d4d4d</Color>
+                                  </Style>
+                                </TextRun>
+                              </TextRuns>
+                              <Style />
+                            </Paragraph>
+                          </Paragraphs>
+                          <rd:DefaultName>REFERRAL_REASON_NUMERIC</rd:DefaultName>
                           <Style>
                             <Border>
                               <Color>#e5e5e5</Color>
@@ -9821,6 +10204,9 @@ GROUP BY involvement_id</CommandText>
                 <TablixMember />
                 <TablixMember />
                 <TablixMember />
+                <TablixMember />
+                <TablixMember />
+                <TablixMember />
               </TablixMembers>
             </TablixColumnHierarchy>
             <TablixRowHierarchy>
@@ -9854,7 +10240,7 @@ GROUP BY involvement_id</CommandText>
             <DataSetName>ReportData</DataSetName>
             <Top>1.9685cm</Top>
             <Height>1.8cm</Height>
-            <Width>204.37855cm</Width>
+            <Width>211.87855cm</Width>
             <Style>
               <Border>
                 <Style>None</Style>
@@ -9998,7 +10384,7 @@ GROUP BY involvement_id</CommandText>
           </Border>
         </Style>
       </Body>
-      <Width>2043.7855mm</Width>
+      <Width>2118.7855mm</Width>
       <Page>
         <PageHeight>29.7cm</PageHeight>
         <PageWidth>21cm</PageWidth>
